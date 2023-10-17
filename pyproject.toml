@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "WikiTicketCalendarMacro"
+version = "0.8.8"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^2.7"
+
+[tool.poetry.plugins."trac.plugins"]
+"WikiTicketCalendarMacro" = "WikiTicketCalendarMacro"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
