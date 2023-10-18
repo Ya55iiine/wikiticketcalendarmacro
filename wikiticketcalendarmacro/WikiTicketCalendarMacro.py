@@ -30,7 +30,7 @@ from genshi.filters.html    import HTMLSanitizer
 from genshi.input           import HTMLParser, ParseError
 
 from trac.config            import Configuration
-from trac.ticket.query      import Query
+from trac.ticket.query      import Query, QueryModule
 # partial import needed here, one more part is deferred
 from trac.util.datefmt      import format_date
 from trac.util.text         import to_unicode
@@ -38,7 +38,6 @@ from trac.web.href          import Href
 from trac.wiki.api          import parse_args, WikiSystem
 from trac.wiki.formatter    import format_to_html
 from trac.wiki.macros       import WikiMacroBase
-
 
 uts = None
 try:
@@ -49,12 +48,10 @@ except ImportError:
     from trac.util.datefmt  import to_timestamp
 
 revision = "$Rev$"
-version = "0.8.8"
+version = "0.8.8P1"
 url = "$URL$"
 
-
 __all__ = ['WikiTicketCalendarMacro', ]
-
 
 class WikiTicketCalendarMacro(WikiMacroBase):
     """Display Milestones and Tickets in a calendar view.
@@ -133,8 +130,12 @@ class WikiTicketCalendarMacro(WikiMacroBase):
         #  [wikiticketcalendar] section
         self.due_field_name = self.config.get('wikiticketcalendar',
                                   'ticket.due_field.name') or 'due_close'
-        self.due_field_fmt = self.config.get('wikiticketcalendar',
-                                  'ticket.due_field.format') or '%y-%m-%d'
+        self.due_field_fmt = str(self.config.get('wikiticketcalendar',
+                                  'ticket.due_field.format')) or '%y-%m-%d'
+        self.skill_field_name = self.config.get('wikiticketcalendar',
+                                  'ticket.skill_field.name') or None
+        self.skill_field_fmt = self.config.get('wikiticketcalendar',
+                                  'ticket.skill_field.format') or None
 
     # Ticket Query provider
     def _ticket_query(self, formatter, content):
@@ -158,19 +159,43 @@ class WikiTicketCalendarMacro(WikiMacroBase):
 
         Also, using "&" as a field separator still works but is deprecated.
         """
-        # Parse args and kwargs.
-        argv, kwargs = parse_args(content, strict=False)
 
-        # Define minimal set of values.
-        std_fields = ['description', 'owner', 'status', 'summary']
-        kwargs['col'] = "|".join(std_fields + [self.due_field_name])
+        if self.ref.req.path_info.endswith('/query'):
+            # Integration with a custom query report (for now only works with %Y-%m-%d format) - Inspired from TRAC query.py (process_request)
+            query_module = QueryModule(self.env)
+            constraints = query_module._get_constraints(self.ref.req)
+            args = self.ref.req.args
+            cols = args.get('col')
+            if isinstance(cols, basestring):
+                cols = [cols]
+            rows = args.get('row', [])
+            if isinstance(rows, basestring):
+                rows = [rows]
+            format = args.get('format')
+            max = args.get('max')
+            if max is None and format in ('csv', 'tab'):
+                max = 0 # unlimited unless specified explicitly
+            query = Query(self.env, args.get('report'),
+                          constraints, cols, args.get('order'),
+                          'desc' in args, args.get('group'),
+                          'groupdesc' in args, 'verbose' in args,
+                          rows,
+                          args.get('page'), 
+                          max)
+        else:            
+            # Parse args and kwargs.
+            argv, kwargs = parse_args(content, strict=False)
+    
+            # Define minimal set of values.
+            std_fields = ['description', 'owner', 'status', 'summary']
+            kwargs['col'] = "|".join(std_fields + [self.due_field_name])
+    
+            # Construct the querystring.
+            query_string = '&'.join(['%s=%s' %
+                item for item in kwargs.iteritems()])
 
-        # Construct the querystring.
-        query_string = '&'.join(['%s=%s' %
-            item for item in kwargs.iteritems()])
-
-        # Get the Query Object.
-        query = Query.from_string(self.env, query_string)
+            # Get the Query Object.
+            query = Query.from_string(self.env, query_string)
 
         # Get the tickets.
         tickets = self._get_tickets(query, formatter.req)
@@ -201,7 +226,13 @@ class WikiTicketCalendarMacro(WikiMacroBase):
         tip = to_unicode(format_date(self._mkdatetime(year, month), '%B %Y'))
         # URL to the current page
         thispageURL = Href(self.ref.req.base_path + self.ref.req.path_info)
-        url = thispageURL(month=month, year=year)
+        arg_list = []
+        for arg_name, arg_val in self.ref.req.arg_list:
+            if arg_name not in ('month', 'year', self.due_field_name):
+                arg_list.append((arg_name, arg_val))
+        # Added support for integration with a custom query report (for now only works with %Y-%m-%d format)
+        arg_list.extend([('month', month),('year', year),(self.due_field_name, '^%04d-%02d' %(year, month))])
+        url = thispageURL(arg_list)
         markup = tag.a(Markup(label), href=url)
         markup(class_=a_class, title=tip)
 
@@ -272,7 +303,10 @@ class WikiTicketCalendarMacro(WikiMacroBase):
         http_param_year = formatter.req.args.get('year','')
         http_param_month = formatter.req.args.get('month','')
 
-        if http_param_year == "":
+        # Added support for integration with a custom query report (for now only works with %Y-%m-%d format)
+        http_param_duedate = formatter.req.args.get('duedate','').strip('~^!$')
+        
+        if http_param_year == "" and http_param_duedate == "":
             # not clicked on a prev or next button
             if len(args) >= 1 and args[0] <> "*":
                 # year given in macro parameters
@@ -280,11 +314,14 @@ class WikiTicketCalendarMacro(WikiMacroBase):
             else:
                 # use current year
                 year = self.thistime.year
-        else:
+        elif http_param_year != "":
             # year in http params (clicked by user) overrides everything
             year = int(http_param_year)
+        else:
+            # Added support for integration with a custom query report (for now only works with %Y-%m-%d format)
+            year = int(http_param_duedate.split('-')[0])
 
-        if http_param_month == "":
+        if http_param_month == "" and http_param_duedate == "":
             # not clicked on a prev or next button
             if len(args) >= 2 and args[1] <> "*":
                 # month given in macro parameters
@@ -292,9 +329,12 @@ class WikiTicketCalendarMacro(WikiMacroBase):
             else:
                 # use current month
                 month = self.thistime.month
-        else:
+        elif http_param_month != "":
             # month in http params (clicked by user) overrides everything
             month = int(http_param_month)
+        else:
+            # Added support for integration with a custom query report (for now only works with %Y-%m-%d format)
+            month = int(http_param_duedate.split('-')[1])
 
         showbuttons = True
         if len(args) >= 3 or kwargs.has_key('nav'):
@@ -423,11 +463,11 @@ table.wikiTicketCalendar td.today {
     border-style: solid; border-width: 1px;
     }
 table.wikiTicketCalendar td.day {
-    background: #e5e5e5; border-color: #444444; color: #333;
+    background: #ffffdd; border-color: #444444; color: #333;
     border-style: solid; border-width: 1px;
     }
 table.wikiTicketCalendar td.fill {
-    background: #eee; border-color: #ccc;
+    background: #f7f7f0; border-color: #ccc;
     border-style: solid; border-width: 1px;
     }
 table.wikiTicketCalendar div.milestone {
@@ -457,20 +497,20 @@ table.wikiTicketCalendar div.opendate_open, span.opendate_open {
 table.wikiTicketCalendar div.opendate_closed, span.opendate_closed {
     font-size: 9px; color: #000077; text-decoration: line-through;
     }
-table.wikiTicketCalendar div.condense { background-color: #e5e5e5; }
+table.wikiTicketCalendar div.condense { background-color: #ffffdd; }
 table.wikiTicketCalendar div.opendate_condense { background-color: #cdcdfa; }
 
 /* pure CSS style tooltip */
 a.tip {
-    position: relative; cursor: help;
+    position: relative;
     }
 a.tip span { display: none; }
 a.tip:hover span {
     display: block; z-index: 1;
-    font-size: 0.75em; text-decoration: none;
+    font-size: 1,25em; text-decoration: none;
     /* big left move because of z-index render bug in IE<8 */
     position: absolute; top: 0.8em; left: 6em;
-    border: 1px solid #000; background-color: #fff; padding: 5px;
+    border: 1px solid #000; background-color: #fff; padding: 5px; width: 600%
     }
 -->
 """
@@ -569,13 +609,23 @@ a.tip:hover span {
                         day_ts_eod = day_ts + 86399
 
                     # check for milestone(s) on that day
+                    # Added support for integration with a custom query report (for now only works with %Y-%m-%d format)
+                    if self.skill_field_name in self.ref.req.args:
+                        filter_value = self.ref.req.args[self.skill_field_name]
+                        if isinstance(filter_value, basestring):
+                            filter_value=[filter_value]
+                    else:
+                        filter_value = ["%"]
+                    sql_rqst = "SELECT name FROM milestone WHERE due >= %s AND due <= %s"
+                    for value in filter_value:
+                        modifier = ""
+                        if value.startswith('!'):
+                            value = value.strip('!')
+                            modifier = "NOT"
+                        sql_rqst += " AND name " + modifier + " LIKE '%" + self.skill_field_fmt % value + "%' ESCAPE '\\'"                   
                     db = self.env.get_db_cnx()
                     cursor = db.cursor()
-                    cursor.execute("""
-                        SELECT name
-                          FROM milestone
-                         WHERE due >= %s and due <= %s
-                    """, (day_ts, day_ts_eod))
+                    cursor.execute(sql_rqst, (day_ts, day_ts_eod))
                     while (1):
                         row = cursor.fetchone()
                         if row is None:
