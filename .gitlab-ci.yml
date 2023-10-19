@@ -35,9 +35,9 @@ build-job:  # This job runs in the build stage.
     - source /opt/rh/rh-python38/enable
     - pip install "urllib3 == 1.26.15"
     - pip install "python-gitlab == 3.14.0"
-    - package_id=$(gitlab -c $GITLAB_API_CONF project-package list --project-id 481|tr -d ':space:\n'|awk '{print $2}')
-    - if [ ! -z "$package_id" ]; then gitlab -c $GITLAB_API_CONF project-package delete --project-id 481 --id $package_id; fi
-    - poetry config repositories.gitlab http://gitlab.artus.dom/api/v4/projects/481/packages/pypi
+    - package_id=$(gitlab -c $GITLAB_API_CONF project-package list --project-id $CI_PROJECT_ID|tr -d ':space:\n'|awk '{print $2}')
+    - if [ ! -z "$package_id" ]; then gitlab -c $GITLAB_API_CONF project-package delete --project-id $CI_PROJECT_ID --id $package_id; fi
+    - poetry config repositories.gitlab http://gitlab.artus.dom/api/v4/projects/$CI_PROJECT_ID/packages/pypi
     - poetry config http-basic.gitlab $CI_DEPLOY_USER $CI_DEPLOY_PASSWORD
     - echo "Gitlab repository configured ..."
     - cd $PWD/wikiticketcalendarmacro
