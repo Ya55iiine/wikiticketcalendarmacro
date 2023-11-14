@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "WikiTicketCalendarMacro"
 version = "0.8.8"
-description = "Macro for the Trac Wiki to display Milestones and Tickets from the Ticketing system in a calendar view"
-authors = ["mcomb"]
+description = "Full page Milestone and Ticket calendar for Trac wiki"
+authors = ["Matthew Good <trac@matt-good.net>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
