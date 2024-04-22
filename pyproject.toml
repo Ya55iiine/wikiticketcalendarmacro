@@ -6,7 +6,7 @@ authors = ["Matthew Good <trac@matt-good.net>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^2.7"
+python = "3"
 
 [tool.poetry.plugins."trac.plugins"]
 "WikiTicketCalendarMacro" = "WikiTicketCalendarMacro"
