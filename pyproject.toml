@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "WikiTicketCalendarMacro"
-version = "0.8.8"
+version = "1.0"
 description = "Full page Milestone and Ticket calendar for Trac wiki"
 authors = ["Matthew Good <trac@matt-good.net>"]
 readme = "README.md"

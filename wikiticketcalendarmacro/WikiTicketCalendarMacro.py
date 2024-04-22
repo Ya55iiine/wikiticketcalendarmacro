@@ -20,16 +20,13 @@
 import calendar
 import datetime
 import re
-import sys
+from io import StringIO
 
-from StringIO               import StringIO
 
-from genshi.builder         import tag
-from genshi.core            import escape, Markup
-from genshi.filters.html    import HTMLSanitizer
-from genshi.input           import HTMLParser, ParseError
+from lib2to3.pgen2.parse import ParseError
+from trac.util.html import Markup, escape, HTMLParser, TracHTMLSanitizer
+from trac.util.html import html as tag
 
-from trac.config            import Configuration
 from trac.ticket.query      import Query, QueryModule
 # partial import needed here, one more part is deferred
 from trac.util.datefmt      import format_date
@@ -38,6 +35,8 @@ from trac.web.href          import Href
 from trac.wiki.api          import parse_args, WikiSystem
 from trac.wiki.formatter    import format_to_html
 from trac.wiki.macros       import WikiMacroBase
+
+# from parser import ParserError
 
 uts = None
 try:
@@ -48,8 +47,7 @@ except ImportError:
     from trac.util.datefmt  import to_timestamp
 
 revision = "$Rev$"
-version = "0.8.8P1"
-url = "$URL$"
+version = "1.0"
 
 __all__ = ['WikiTicketCalendarMacro', ]
 
@@ -166,10 +164,10 @@ class WikiTicketCalendarMacro(WikiMacroBase):
             constraints = query_module._get_constraints(self.ref.req)
             args = self.ref.req.args
             cols = args.get('col')
-            if isinstance(cols, basestring):
+            if isinstance(cols, str):
                 cols = [cols]
             rows = args.get('row', [])
-            if isinstance(rows, basestring):
+            if isinstance(rows, str):
                 rows = [rows]
             format = args.get('format')
             max = args.get('max')
@@ -192,7 +190,7 @@ class WikiTicketCalendarMacro(WikiMacroBase):
     
             # Construct the querystring.
             query_string = '&'.join(['%s=%s' %
-                item for item in kwargs.iteritems()])
+                item for item in kwargs.items()])
 
             # Get the Query Object.
             query = Query.from_string(self.env, query_string)
@@ -255,7 +253,7 @@ class WikiTicketCalendarMacro(WikiMacroBase):
         if self.sanitize is True:
             try:
                 description = HTMLParser(StringIO(markup)
-                                           ).parse() | HTMLSanitizer()
+                                           ).parse() | TracHTMLSanitizer()
             except ParseError:
                 description = escape(markup)
         else:
@@ -308,7 +306,7 @@ class WikiTicketCalendarMacro(WikiMacroBase):
         
         if http_param_year == "" and http_param_duedate == "":
             # not clicked on a prev or next button
-            if len(args) >= 1 and args[0] <> "*":
+            if len(args) >= 1 and args[0] != "*":
                 # year given in macro parameters
                 year = int(args[0])
             else:
@@ -323,7 +321,7 @@ class WikiTicketCalendarMacro(WikiMacroBase):
 
         if http_param_month == "" and http_param_duedate == "":
             # not clicked on a prev or next button
-            if len(args) >= 2 and args[1] <> "*":
+            if len(args) >= 2 and args[1] != "*":
                 # month given in macro parameters
                 month = int(args[1])
             else:
@@ -337,21 +335,21 @@ class WikiTicketCalendarMacro(WikiMacroBase):
             month = int(http_param_duedate.split('-')[1])
 
         showbuttons = True
-        if len(args) >= 3 or kwargs.has_key('nav'):
+        if len(args) >= 3 or 'nav' in kwargs.items():#kwargs.has_key('nav'):
             try:
                 showbuttons = kwargs['nav'] in ["True", "true", "yes", "1"]
             except KeyError:
                 showbuttons = args[2] in ["True", "true", "yes", "1"]
 
         wiki_page_format = "%Y-%m-%d"
-        if len(args) >= 4 and args[3] != "*" or kwargs.has_key('wiki'):
+        if len(args) >= 4 and args[3] != "*" or 'wiki' in kwargs.items():#kwargs.has_key('wiki'):
             try:
                 wiki_page_format = str(kwargs['wiki'])
             except KeyError:
                 wiki_page_format = str(args[3])
 
         show_t_open_dates = True
-        if len(args) >= 5 or kwargs.has_key('cdate'):
+        if len(args) >= 5 or 'cdate' in kwargs.items():#kwargs.has_key('cdate'):
             try:
                 show_t_open_dates = kwargs['cdate'] in \
                                                ["True", "true", "yes", "1"]
@@ -361,7 +359,7 @@ class WikiTicketCalendarMacro(WikiMacroBase):
         # template name tried to create new pages
         # optional, default (empty page) is used, if name is invalid
         wiki_page_template = ""
-        if len(args) >= 6 or kwargs.has_key('base'):
+        if len(args) >= 6 or 'base' in kwargs.items():#kwargs.has_key('base'):
             try:
                 wiki_page_template = kwargs['base']
             except KeyError:
@@ -369,7 +367,7 @@ class WikiTicketCalendarMacro(WikiMacroBase):
 
         # TracQuery support for ticket selection
         query_args = "id!=0"
-        if len(args) >= 7 or kwargs.has_key('query'):
+        if len(args) >= 7 or 'query' in kwargs.items():#kwargs.has_key('query'):
             # prefer query arguments provided by kwargs
             try:
                 query_args = kwargs['query']
@@ -379,7 +377,7 @@ class WikiTicketCalendarMacro(WikiMacroBase):
 
         # compress long ticket lists
         list_condense = 0
-        if len(args) >= 8 or kwargs.has_key('short'):
+        if len(args) >= 8 or 'short' in kwargs.items():#kwargs.has_key('short'):
             # prefer query arguments provided by kwargs
             try:
                 list_condense = int(kwargs['short'])
@@ -388,7 +386,7 @@ class WikiTicketCalendarMacro(WikiMacroBase):
 
         # control calendar display width
         cal_width = "100%;"
-        if len(args) >= 9 or kwargs.has_key('width'):
+        if len(args) >= 9 or 'width' in kwargs.items():#kwargs.has_key('width'):
             # prefer query arguments provided by kwargs
             try:
                 cal_width = kwargs['width']
@@ -612,7 +610,7 @@ a.tip:hover span {
                     # Added support for integration with a custom query report (for now only works with %Y-%m-%d format)
                     if self.skill_field_name in self.ref.req.args:
                         filter_value = self.ref.req.args[self.skill_field_name]
-                        if isinstance(filter_value, basestring):
+                        if isinstance(filter_value, str):
                             filter_value=[filter_value]
                     else:
                         filter_value = ["%"]
@@ -622,8 +620,10 @@ a.tip:hover span {
                         if value.startswith('!'):
                             value = value.strip('!')
                             modifier = "NOT"
-                        sql_rqst += " AND name " + modifier + " LIKE '%" + self.skill_field_fmt % value + "%' ESCAPE '\\'"                   
-                    db = self.env.get_db_cnx()
+                        # sql_rqst += " AND name " + str(modifier) + " LIKE '%" + self.skill_field_fmt % value + "%' ESCAPE '\\'"                   
+                        sql_rqst += " AND name " + str(modifier) + " LIKE '%{}%' ESCAPE \\".format(self.skill_field_fmt)
+                    # db = self.env.get_db_cnx()
+                    db = self.env.db_transaction()
                     cursor = db.cursor()
                     cursor.execute(sql_rqst, (day_ts, day_ts_eod))
                     while (1):
